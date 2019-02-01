@@ -11,7 +11,7 @@ import files
 from django import template
 from django.conf import settings
 from django.db.models import Q
-from django.utils.encoding import smart_unicode
+from django.utils.encoding import smart_text
 from django.template.loader import render_to_string
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.storage import get_storage_class
@@ -84,7 +84,7 @@ class BaseAttachmentNode(template.Node):
         
         qs = self.attachment_model.objects.filter(
                 content_type=ctype,
-                object_id=smart_unicode(object_pk),
+                object_id=smart_text(object_pk),
                 site__pk=settings.SITE_ID)
         
         # The 'is_public' field and the 'backend' fields are implementation

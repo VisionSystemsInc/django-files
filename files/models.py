@@ -86,7 +86,7 @@ class BaseAttachmentAbstractModel(models.Model):
     # Some metadata fields
     site = models.ForeignKey(Site, default=Site.objects.get_current,
                              on_delete=models.CASCADE)
-    ip_address = models.IPAddressField(_("IP address"), blank=True, null=True)
+    ip_address = models.GenericIPAddressField(_("IP address"), blank=True, null=True)
     is_public = models.BooleanField(_("is public"), default=True,
                     help_text=_("Uncheck to hide the attachment from other users"))
     created = models.DateTimeField(_("date/time created"), auto_now_add=True)
@@ -94,6 +94,11 @@ class BaseAttachmentAbstractModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+# https://stackoverflow.com/a/12654998/4166604
+def get_storage_name():
+  return str(get_storage_class().__name__)
 
 
 class Attachment(BaseAttachmentAbstractModel):
@@ -106,7 +111,7 @@ class Attachment(BaseAttachmentAbstractModel):
     attachment = models.FileField(_("attachment"), upload_to=get_upload_to, db_index=True)
     blob = BlobField(_("binary data"), blank=True, null=True, editable=False)
     backend = models.CharField(max_length=100, editable=False,
-                               default=lambda: str(get_storage_class().__name__))
+                               default=get_storage_name)
 
     # Metadata about the file
     mimetype = models.CharField(_("mime type"), max_length=50, blank=True, null=True)

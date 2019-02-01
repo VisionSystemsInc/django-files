@@ -16,6 +16,7 @@ CONTRIB_BACKENDS = [
     "files.storage.OracleStorage",
 ]
 
+default_app_config = 'files.apps.FilesConfig'
 
 def get_storage_backend():
     """
@@ -48,10 +49,10 @@ def get_storage_backend_name():
 
 
 def get_model():
+    from files.models import Attachment
     """
     Returns the attachment model class.
     """
-    from files.models import Attachment
 
     if get_storage_backend_name() not in CONTRIB_BACKENDS and hasattr(get_storage_backend(), "get_model"):
         return get_storage_backend().get_model()
