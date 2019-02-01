@@ -3,7 +3,7 @@
 from django import forms
 from django.conf import settings
 from django.contrib import admin
-from django.contrib.contenttypes import generic
+from django.contrib.contenttypes.admin import GenericStackedInline
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils.translation import ugettext_lazy as _, ungettext
 
@@ -14,6 +14,7 @@ class AttachmentAdminForm(forms.ModelForm):
     
     class Meta:
         model = Attachment
+        fields = ['creator', 'description', 'attachment', 'mimetype']
         
     def clean_attachment(self):
         """
@@ -36,7 +37,7 @@ class AttachmentAdminForm(forms.ModelForm):
             # related object exist.
             try:
                 ctype.get_object_for_this_type(pk=object_id)
-            except ObjectDoesNotExist, e:
+            except ObjectDoesNotExist as e:
                 err_msg = " ".join((e.args[0], u"No matching %s object with pk: %d." % (ctype.name, object_id)))
                 self._errors["object_id"] = self.error_class([err_msg])
                 del cleaned_data["object_id"]
@@ -120,7 +121,7 @@ class AttachmentAdmin(admin.ModelAdmin):
         self.message_user(request, msg % {"count": n, "action": message(n)})
     
 
-class AttachmentInlines(generic.GenericStackedInline):
+class AttachmentInlines(GenericStackedInline):
     """
     A generic stacked inline admin form which can be used
     to display attachments for the various models they are

@@ -184,7 +184,7 @@ class PostgreSQLStorage(DatabaseStorage):
                                                            instance.checksum, instance.pk))
             lobject.close()
             transaction.savepoint_commit(sid, using=self.using)
-        except IntegrityError, e:
+        except IntegrityError as e:
             transaction.savepoint_rollback(sid, using=self.using)
             raise e
 
@@ -199,7 +199,7 @@ class PostgreSQLStorage(DatabaseStorage):
             lobject.unlink()
             lobject.close()
             transaction.savepoint_commit(sid, using=self.using)
-        except IntegrityError, e:
+        except IntegrityError as e:
             transaction.savepoint_rollback(sid, using=self.using)
             raise e
 

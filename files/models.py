@@ -8,12 +8,13 @@ from django.db.models import signals
 from django.conf import settings
 from django.dispatch.dispatcher import receiver
 from django.contrib.auth.models import User
-from django.contrib.contenttypes import generic
+from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.models import ContentType
 from django.utils.translation import ugettext_lazy as _
 from django.template.defaultfilters import slugify
 from django.core.files.storage import get_storage_class
+from django.urls import reverse
 
 from files.utils import md5buffer
 from files.signals import write_binary, unlink_binary, post_write, post_unlink
@@ -41,7 +42,7 @@ class BlobField(models.Field):
     """
 
     description = _("Binary large object (blob) field")
-    
+
     def get_internal_type(self):
         return "BlobField"
 
@@ -66,28 +67,31 @@ class AttachmentManager(models.Manager):
     def attachments_for_object(self, obj):
         object_type = ContentType.objects.get_for_models(obj)
         return self.get_query_set().filter(content_type__pk=object_type.pk, object_id=obj.pk)
-        
+
 
 class BaseAttachmentAbstractModel(models.Model):
     """
     An abstract model that any custom attachment model should
     subclass.
     """
-    
+
     # Content object fields
-    content_type = models.ForeignKey(ContentType, verbose_name=_("content type"),
-                    related_name="content_type_set_for_%(class)s")
+    content_type = models.ForeignKey(ContentType,
+                                     verbose_name=_("content type"),
+                                     related_name="content_type_set_for_%(class)s",
+                                     on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField()
-    content_object = generic.GenericForeignKey("content_type", "object_id")
+    content_object = GenericForeignKey("content_type", "object_id")
 
     # Some metadata fields
-    site = models.ForeignKey(Site, default=Site.objects.get_current)
+    site = models.ForeignKey(Site, default=Site.objects.get_current,
+                             on_delete=models.CASCADE)
     ip_address = models.IPAddressField(_("IP address"), blank=True, null=True)
     is_public = models.BooleanField(_("is public"), default=True,
                     help_text=_("Uncheck to hide the attachment from other users"))
     created = models.DateTimeField(_("date/time created"), auto_now_add=True)
     modified = models.DateTimeField(_("date/time modified"), auto_now=True)
-    
+
     class Meta:
         abstract = True
 
@@ -96,23 +100,23 @@ class Attachment(BaseAttachmentAbstractModel):
     """
     A file attached to some object.
     """
-    
-    creator = models.ForeignKey(User, related_name="created_attachments", verbose_name=_("creator"))
+
+    creator = models.ForeignKey(User, related_name="created_attachments", verbose_name=_("creator"), on_delete=models.CASCADE)
     description = models.CharField(_("description"), max_length=100, blank=True, null=True)
     attachment = models.FileField(_("attachment"), upload_to=get_upload_to, db_index=True)
     blob = BlobField(_("binary data"), blank=True, null=True, editable=False)
     backend = models.CharField(max_length=100, editable=False,
                                default=lambda: str(get_storage_class().__name__))
-    
+
     # Metadata about the file
     mimetype = models.CharField(_("mime type"), max_length=50, blank=True, null=True)
     slug = models.SlugField(max_length=100, unique=True, blank=True, editable=False)
     size = models.PositiveIntegerField(_("file size"), blank=True, editable=False)
     checksum = models.CharField(_("md5 checksum"), max_length=32, blank=True, editable=False)
-    
+
     # Manager
     objects = AttachmentManager()
-    
+
     class Meta:
         ordering = ("created", "modified")
         permissions = (
@@ -120,14 +124,13 @@ class Attachment(BaseAttachmentAbstractModel):
             ("delete_all_attachment", "Can delete all attachments"),
             ("download_attachment", "Can download attachment"),
         )
-        
+
     def __unicode__(self):
         return u"%s attached by %s" % (self.filename, self.creator)
-    
-    @models.permalink
+
     def get_absolute_url(self):
-        return ("view-attachment", (), {"slug": self.slug})
-    
+        return reverse("view-attachment", kwargs={"slug": self.slug})
+
     def clean(self):
         """
         This method is called before each save.
@@ -136,9 +139,9 @@ class Attachment(BaseAttachmentAbstractModel):
             self.size = self.attachment.size
             if hasattr(self.attachment.file, "content_type"):
                 self.mimetype = self.attachment.file.content_type
-        except ValueError, e:
+        except ValueError as e:
             raise ValidationError(e.args[0])
-        
+
     def save(self, *args, **kwargs):
         """
         Check what storage backend which are being used.
@@ -154,7 +157,7 @@ class Attachment(BaseAttachmentAbstractModel):
                 content = self.attachment.file
                 super(Attachment, self).save(*args, **kwargs)
                 write_binary.send(sender=Attachment, instance=self, content=content)
-            except Exception, e:
+            except Exception as e:
                 raise e
         elif self.backend == "FileSystemStorage":
             # If using the default FileSystemStorage,
@@ -170,7 +173,7 @@ class Attachment(BaseAttachmentAbstractModel):
         # use the write_binary method (such as the FileStorageBackend), to
         # keep consistancy between all backends.
         post_write.send(sender=Attachment, instance=self)
-    
+
     @property
     def pre_slug(self):
         """
@@ -180,11 +183,11 @@ class Attachment(BaseAttachmentAbstractModel):
         s = "-".join(map(str, (self.content_type, self.pk,
                                os.path.basename(self.attachment.name))))
         return re.sub("[^\w+]", "-", s)
-    
+
     @property
     def filename(self):
         return os.path.basename(self.attachment.name)
-    
+
     @property
     def checksum_match(self):
         """
@@ -248,6 +251,6 @@ def post_delete_callback(sender, instance, **kwargs):
                     new_name = "".join((name,
                          getattr(settings, "FORCE_FILE_RENAME_POSTFIX", "_removed")))
                     os.rename(name, new_name)
-                except OSError, e:
+                except OSError as e:
                     if e.errno != errno.ENOENT:
                         raise e

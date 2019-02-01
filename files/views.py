@@ -60,10 +60,10 @@ class AttachmentCreateView(LoginRequiredMixin, PermissionRequiredMixin, NextMixi
             raise AttributeError("The given content-type id %d does not resolve to a model." % ctype_pk)
         except ContentType.DoesNotExist:
             raise ContentType.DoesNotExist("No matching content-type id and object id exists." % (ctype_pk, object_pk))
-        except (ValueError, ValidationError), e:
+        except (ValueError, ValidationError) as e:
             raise e("Attempting to get content-type %d and object %d raised %s",
                     (ctype_pk, object_pk, e.__class__.__name__))
-        except Exception, e:
+        except Exception as e:
             raise e
         return form_class(target, **kwargs)
     
