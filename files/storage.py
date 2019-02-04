@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import os
-import urlparse
+from urllib.parse import urljoin
 import itertools
-from StringIO import StringIO
+from io import BytesIO
 from django.conf import settings
 from django.db import connections, transaction, IntegrityError
-from django.core import urlresolvers
+from django.urls import reverse
 from django.core.files.base import File
 from django.core.files.storage import Storage, get_storage_class
 from django.dispatch.dispatcher import receiver
@@ -70,7 +70,7 @@ class DatabaseStorage(Storage):
     def exists(self, name):
         return Attachment.objects.using(self.using).filter(attachment__exact=name).exists()
     
-    def get_available_name(self, name):
+    def get_available_name(self, name, max_length=None):
         """
         Return a filename based on the name parameter that's
         free and available for new content to be written to
@@ -84,12 +84,14 @@ class DatabaseStorage(Storage):
             # FIXME: This is a bit expensive, and requires a new database lookup
             # on each iteration.
             name = os.path.join(dir_name, "%s_%s%s" % (file_root, count.next(), file_ext))
+        if max_length:
+          name = name[:max_length]
         return name
     
     def url(self, name):
         if self.base_url is None:
             raise ValueError("This file is not accessible via a URL.")
-        return urlparse.urljoin(self.base_url, name).replace("\\", "/")
+        return urljoin(self.base_url, name).replace("\\", "/")
     
     def size(self, name):
         attachment = Attachment.objects.using(self.using).get(attachment__exact=name)
@@ -121,7 +123,7 @@ class PostgreSQLStorage(DatabaseStorage):
             # saved, but has not yet executed the `write_binary` signal.
             # Fall back to the super url.
             return super(PostgreSQLStorage, self).url(name)
-        return urlresolvers.reverse("download-attachment", kwargs={"slug": attachment.slug})
+        return reverse("download-attachment", kwargs={"slug": attachment.slug})
     
     def _open(self, name, mode="rb"):
         """
@@ -131,7 +133,7 @@ class PostgreSQLStorage(DatabaseStorage):
         attachment = Attachment.objects.using(self.using).get(attachment__exact=name)
         cursor = connections[self.using].cursor()
         lobject = cursor.db.connection.lobject(attachment.blob, "r")
-        fname = File(StringIO(lobject.read()), attachment.filename)
+        fname = File(BytesIO(lobject.read()), attachment.filename)
         lobject.close()
         
         # Make sure the checksum match before returning the file
@@ -228,14 +230,14 @@ class SQLiteStorage(DatabaseStorage):
             # saved, but has not yet executed the `write_binary` signal.
             # Fall back to the super url.
             return super(SQLiteStorage, self).url(name)
-        return urlresolvers.reverse("download-attachment", kwargs={"slug": attachment.slug})
+        return reverse("download-attachment", kwargs={"slug": attachment.slug})
        
     def _open(self, name, mode="rb"):
         """
         Return a File object.
         """
         attachment = Attachment.objects.using(self.using).get(attachment__exact=name)
-        fname = File(StringIO(attachment.blob), attachment.filename)
+        fname = File(BytesIO(attachment.blob), attachment.filename)
         
         # Make sure the checksum match before returning the file
         if not md5buffer(fname) == attachment.checksum:
