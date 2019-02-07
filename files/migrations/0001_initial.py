@@ -30,7 +30,7 @@ class Migration(migrations.Migration):
                 ('description', models.CharField(blank=True, max_length=100, null=True, verbose_name='description')),
                 ('attachment', models.FileField(db_index=True, upload_to=files.models.get_upload_to, verbose_name='attachment')),
                 ('blob', files.models.BlobField(blank=True, editable=False, null=True, verbose_name='binary data')),
-                ('backend', models.CharField(default=files.models.get_storate_name, editable=False, max_length=100)),
+                ('backend', models.CharField(default=files.models.get_storage_name, editable=False, max_length=100)),
                 ('mimetype', models.CharField(blank=True, max_length=50, null=True, verbose_name='mime type')),
                 ('slug', models.SlugField(blank=True, editable=False, max_length=100, unique=True)),
                 ('size', models.PositiveIntegerField(blank=True, editable=False, verbose_name='file size')),

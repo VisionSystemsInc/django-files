@@ -27,9 +27,9 @@ def get_upload_to(instance, filename):
     determine the value of the url attribute.
     """
     prefix = getattr(settings, "FILE_STORAGE_PREFIX", "attachments")
-    app_model = u"_".join((instance.content_object._meta.app_label,
-                          instance.content_object._meta.object_name)).lower()
-    return u"/".join(map(str, (prefix, app_model, instance.content_object.pk, filename)))
+    # app_model = u"_".join((instance.content_object._meta.app_label,
+    #                       instance.content_object._meta.object_name)).lower()
+    return u"/".join(map(str, (prefix, filename)))
 
 
 class UnsupportedBackend(Exception):
@@ -97,7 +97,7 @@ class BaseAttachmentAbstractModel(models.Model):
 
 
 # https://stackoverflow.com/a/12654998/4166604
-def get_storate_name():
+def get_storage_name():
   return str(get_storage_class().__name__)
 
 
@@ -111,7 +111,7 @@ class Attachment(BaseAttachmentAbstractModel):
     attachment = models.FileField(_("attachment"), upload_to=get_upload_to, db_index=True)
     blob = BlobField(_("binary data"), blank=True, null=True, editable=False)
     backend = models.CharField(max_length=100, editable=False,
-                               default=get_storate_name)
+                               default=get_storage_name)
 
     # Metadata about the file
     mimetype = models.CharField(_("mime type"), max_length=50, blank=True, null=True)

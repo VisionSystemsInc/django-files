@@ -24,31 +24,31 @@ class DatabaseStorage(Storage):
     def __init__(self, using=None, base_url=None):
         self.using = using or "default"
         self.base_url = base_url or getattr(settings, "MEDIA_URL", "")
-    
+
     #
     # These methods _must_ be overridden by subclasses.
     #
-    
+
     def _open(self, name, mode="rb"):
         """
         This method is called by Storage.open(),
         and should be overridden to provide
         correct SQL syntax for current databas engine
-        
+
         Must return a File() object
         """
         pass
-    
+
     def _save(self, name, content):
         """
         This method is called by Storage.save(),
         and should be overridden to provide
         correct syntax for current database engine
-        
+
         Must return name
         """
         pass
-    
+
     def delete(self, name):
         """
         This method should be overridden to
@@ -56,20 +56,20 @@ class DatabaseStorage(Storage):
         in current database engine if necessary.
         """
         pass
-    
+
     # The following methods should work on
     # all backends
-    
+
     def listdir(self, path):
         """
         This database backend does not support
         listing directories
         """
         raise NotImplementedError("Can't list directories from database backend.")
-    
+
     def exists(self, name):
         return Attachment.objects.using(self.using).filter(attachment__exact=name).exists()
-    
+
     def get_available_name(self, name, max_length=None):
         """
         Return a filename based on the name parameter that's
@@ -87,27 +87,27 @@ class DatabaseStorage(Storage):
         if max_length:
           name = name[:max_length]
         return name
-    
+
     def url(self, name):
         if self.base_url is None:
             raise ValueError("This file is not accessible via a URL.")
         return urljoin(self.base_url, name).replace("\\", "/")
-    
+
     def size(self, name):
         attachment = Attachment.objects.using(self.using).get(attachment__exact=name)
         return attachment.size
-        
+
     def accessed_time(self, name):
         raise NotImplementedError("Access time is not tracked in database storage")
-    
+
     def created_time(self, name):
         attachment = Attachment.objects.using(self.using).get(attachment__exact=name)
         return attachment.created
-        
+
     def modified_time(self, name):
         attachment = Attachment.objects.using(self.using).get(attachment__exact=name)
         return attachment.modified
-        
+
 
 class PostgreSQLStorage(DatabaseStorage):
     """
@@ -115,7 +115,7 @@ class PostgreSQLStorage(DatabaseStorage):
     """
     def __init__(self, using=None, base_url=None):
         super(PostgreSQLStorage, self).__init__(using, base_url)
-        
+
     def url(self, name):
         attachment = Attachment.objects.using(self.using).get(attachment__exact=name)
         if not attachment.slug:
@@ -124,27 +124,29 @@ class PostgreSQLStorage(DatabaseStorage):
             # Fall back to the super url.
             return super(PostgreSQLStorage, self).url(name)
         return reverse("download-attachment", kwargs={"slug": attachment.slug})
-    
+
     def _open(self, name, mode="rb"):
         """
         Read the file from the database, and return
         as a File instance.
         """
+        print('open ran 1')
         attachment = Attachment.objects.using(self.using).get(attachment__exact=name)
         cursor = connections[self.using].cursor()
-        lobject = cursor.db.connection.lobject(attachment.blob, "r")
-        fname = File(BytesIO(lobject.read()), attachment.filename)
-        lobject.close()
-        
+        with transaction.atomic(using=self.using):
+          lobject = cursor.db.connection.lobject(attachment.blob, "rb")
+          fname = File(BytesIO(lobject.read()), attachment.filename)
+          lobject.close()
+
         # Make sure the checksum match before returning the file
         if not md5buffer(fname) == attachment.checksum:
             raise IntegrityError("Checksum mismatch")
-        
+
         fname.size = attachment.size
         fname.mode = mode
-        
+
         return fname
-    
+
     def _save(self, name, content):
         """
         Do nothing.
@@ -152,8 +154,9 @@ class PostgreSQLStorage(DatabaseStorage):
         in the Attachment save() method, which will call the `_write_binary()`
         method below, and write the binary file into the Attachment row.
         """
+        print('save ran 1')
         return name
-    
+
     def _write_binary(self, instance, content):
         """
         Do the actual writing of binary data to the table.
@@ -162,6 +165,7 @@ class PostgreSQLStorage(DatabaseStorage):
         information which was not accessible in the save method
         on the model.
         """
+        print('write_binary ran 1')
         cursor = connections[self.using].cursor()
         if not (hasattr(instance, "_created") and instance._created is True):
             cursor.execute("select checksum from files_attachment where id = %s", (instance.pk, ))
@@ -176,19 +180,22 @@ class PostgreSQLStorage(DatabaseStorage):
         blob_data = content.read()
         instance.slug = slugify(instance.pre_slug)
         instance.checksum = md5buffer(content)
-        
-        try:
-            sid = transaction.savepoint(self.using)
+
+        with transaction.atomic(using=self.using):
+            # original_autocommit = cursor.db.connection.autocommit
+            # cursor.db.connection.autocommit = False
+            # sid = transaction.savepoint(self.using)
+            
             lobject = cursor.db.connection.lobject(0, "n", 0, None)
             lobject.write(blob_data)
             cursor.execute("update files_attachment set blob = %s, slug = %s, \
                             checksum = %s where id = %s", (lobject.oid, instance.slug,
                                                            instance.checksum, instance.pk))
             lobject.close()
-            transaction.savepoint_commit(sid, using=self.using)
-        except IntegrityError as e:
-            transaction.savepoint_rollback(sid, using=self.using)
-            raise e
+            # transaction.savepoint_commit(sid, using=self.using)
+        # except IntegrityError as e:
+        #     transaction.savepoint_rollback(sid, using=self.using)
+        #     raise e
 
     def _unlink_binary(self, instance):
         """
@@ -212,7 +219,7 @@ class MySQLStorage(DatabaseStorage):
     """
     def __init__(self, using=None, base_url=None):
         super(MySQLStorage, self).__init__(using, base_url)
-        
+
         raise NotImplementedError("Support for MySQL databases is not yet implemented.")
 
 
@@ -222,7 +229,7 @@ class SQLiteStorage(DatabaseStorage):
     """
     def __init__(self, using=None, base_url=None):
         super(SQLiteStorage, self).__init__(using, base_url)
-    
+
     def url(self, name):
         attachment = Attachment.objects.using(self.using).get(attachment__exact=name)
         if not attachment.slug:
@@ -231,22 +238,22 @@ class SQLiteStorage(DatabaseStorage):
             # Fall back to the super url.
             return super(SQLiteStorage, self).url(name)
         return reverse("download-attachment", kwargs={"slug": attachment.slug})
-       
+
     def _open(self, name, mode="rb"):
         """
         Return a File object.
         """
         attachment = Attachment.objects.using(self.using).get(attachment__exact=name)
         fname = File(BytesIO(attachment.blob), attachment.filename)
-        
+
         # Make sure the checksum match before returning the file
         if not md5buffer(fname) == attachment.checksum:
             raise IntegrityError("Checksum mismatch")
-        
+
         fname.size = attachment.size
         fname.mode = mode
         return fname
-    
+
     def _save(self, name, content):
         """
         Do nothing.
@@ -255,7 +262,7 @@ class SQLiteStorage(DatabaseStorage):
         method below, and write the binary file into the Attachment row.
         """
         return name
-    
+
     def _write_binary(self, instance, content):
         """
         Do the actual writing of binary data to the table.
@@ -270,7 +277,7 @@ class SQLiteStorage(DatabaseStorage):
             new, orig = md5buffer(content), cursor.fetchone()[0]
             if new == orig:
                 return
-        
+
         # If still here, either the file is a new upload,
         # or it has changed. In either case, write the
         # file to the database.
@@ -289,7 +296,7 @@ class OracleStorage(DatabaseStorage):
     """
     def __init__(self, using=None, base_url=None):
         super(OracleStorage, self).__init__(using, base_url)
-        
+
         raise NotImplementedError("Support for Oracle databases is not yet implemented.")
 
 
