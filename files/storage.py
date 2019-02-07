@@ -182,35 +182,22 @@ class PostgreSQLStorage(DatabaseStorage):
         instance.checksum = md5buffer(content)
 
         with transaction.atomic(using=self.using):
-            # original_autocommit = cursor.db.connection.autocommit
-            # cursor.db.connection.autocommit = False
-            # sid = transaction.savepoint(self.using)
-            
             lobject = cursor.db.connection.lobject(0, "n", 0, None)
             lobject.write(blob_data)
             cursor.execute("update files_attachment set blob = %s, slug = %s, \
                             checksum = %s where id = %s", (lobject.oid, instance.slug,
                                                            instance.checksum, instance.pk))
             lobject.close()
-            # transaction.savepoint_commit(sid, using=self.using)
-        # except IntegrityError as e:
-        #     transaction.savepoint_rollback(sid, using=self.using)
-        #     raise e
 
     def _unlink_binary(self, instance):
         """
         Unlink the binary data before deleting
         """
         cursor = connections[self.using].cursor()
-        try:
-            sid = transaction.savepoint(self.using)
+        with transaction.atomic(using=self.using):
             lobject = cursor.db.connection.lobject(instance.blob, "w")
             lobject.unlink()
             lobject.close()
-            transaction.savepoint_commit(sid, using=self.using)
-        except IntegrityError as e:
-            transaction.savepoint_rollback(sid, using=self.using)
-            raise e
 
 
 class MySQLStorage(DatabaseStorage):
