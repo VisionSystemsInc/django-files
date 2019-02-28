@@ -130,7 +130,6 @@ class PostgreSQLStorage(DatabaseStorage):
         Read the file from the database, and return
         as a File instance.
         """
-        print('open ran 1')
         attachment = Attachment.objects.using(self.using).get(attachment__exact=name)
         cursor = connections[self.using].cursor()
         with transaction.atomic(using=self.using):
@@ -154,7 +153,6 @@ class PostgreSQLStorage(DatabaseStorage):
         in the Attachment save() method, which will call the `_write_binary()`
         method below, and write the binary file into the Attachment row.
         """
-        print('save ran 1')
         return name
 
     def _write_binary(self, instance, content):
@@ -165,7 +163,6 @@ class PostgreSQLStorage(DatabaseStorage):
         information which was not accessible in the save method
         on the model.
         """
-        print('write_binary ran 1')
         cursor = connections[self.using].cursor()
         if not (hasattr(instance, "_created") and instance._created is True):
             cursor.execute("select checksum from files_attachment where id = %s", (instance.pk, ))
@@ -188,6 +185,7 @@ class PostgreSQLStorage(DatabaseStorage):
                             checksum = %s where id = %s", (lobject.oid, instance.slug,
                                                            instance.checksum, instance.pk))
             lobject.close()
+        instance.blob = lobject.oid
 
     def _unlink_binary(self, instance):
         """
